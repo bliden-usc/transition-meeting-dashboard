@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transition Meeting Dashboard</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f3f4f6;
+    margin: 0;
+    padding: 24px;
+    color: #111827;
+}
+
+.container {
+    max-width: 1400px;
+    margin: auto;
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+}
+
+.card {
+    background: white;
+    border-radius: 24px;
+    padding: 24px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.timer {
+    background: black;
+    color: white;
+    border-radius: 24px;
+    padding: 40px;
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.time {
+    font-size: 96px;
+    font-weight: bold;
+}
+
+.warning {
+    color: #f87171;
+}
+
+.buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+button {
+    padding: 14px 18px;
+    border: none;
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.start { background: #16a34a; color: white; }
+.pause { background: #f59e0b; color: white; }
+.next { background: #2563eb; color: white; }
+.reset { background: #6b7280; color: white; }
+.copy { background: #111827; color: white; }
+
+.section {
+    border: 1px solid #d1d5db;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 12px;
+    cursor: pointer;
+}
+
+.section.active {
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+textarea {
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid #d1d5db;
+    padding: 16px;
+    resize: vertical;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.status {
+    margin-top: 12px;
+    font-size: 14px;
+    color: #2563eb;
+    font-weight: bold;
+}
+
+@media (max-width: 900px) {
+    .container {
+        grid-template-columns: 1fr;
+    }
+
+    .time {
+        font-size: 64px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card">
+
+        <h1>Daily Transition Meeting</h1>
+        <p>25-Minute Operational Transfer Session</p>
+
+        <div class="timer">
+            <div>Current Section</div>
+            <h2 id="currentTitle"></h2>
+            <div id="timerDisplay" class="time"></div>
+        </div>
+
+        <div class="buttons">
+            <button class="start" onclick="startTimer()">Start</button>
+            <button class="pause" onclick="pauseTimer()">Pause</button>
+            <button class="next" onclick="nextSection()">Next Section</button>
+            <button class="reset" onclick="resetMeeting()">Reset</button>
+        </div>
+
+        <div id="agenda"></div>
+
+    </div>
+
+    <div>
+
+        <div class="card">
+            <h2>Meeting Notes</h2>
+
+            <textarea id="notes" rows="16"
+                placeholder="Capture decisions, follow-ups, and operational notes here..."></textarea>
+
+            <div class="buttons" style="margin-top:16px;">
+                <button class="copy" onclick="copyNotes()">Copy Meeting Notes</button>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;">
+            <h2>Parking Lot</h2>
+
+            <textarea id="parkingLot" rows="10"
+                placeholder="Capture non-urgent issues and leadership follow-up items..."></textarea>
+
+            <div class="buttons" style="margin-top:16px;">
+                <button class="copy" onclick="copyParkingLot()">Copy Parking Lot</button>
+                <button class="copy" onclick="copyFullSummary()">Copy Full Meeting Summary</button>
+            </div>
+
+            <div class="status" id="statusMessage"></div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const agenda = [
+    {
+        title: "Immediate Priorities / Risks",
+        minutes: 3,
+        bullets: [
+            "Urgent issues, deadlines, or blockers",
+            "Items currently dependent on Jennifer alone"
+        ]
+    },
+    {
+        title: "Active Work Review",
+        minutes: 7,
+        bullets: [
+            "Status of in-progress operational tasks/projects",
+            "Upcoming deadlines, dependencies, and ownership transitions"
+        ]
+    },
+    {
+        title: "Daily Knowledge Transfer Topic",
+        minutes: 10,
+        bullets: [
+            "Walk through one operational process or responsibility",
+            "Capture workflows, systems, files, contacts, templates, and key judgment points"
+        ]
+    },
+    {
+        title: "Hidden Dependencies / Institutional Knowledge",
+        minutes: 3,
+        bullets: [
+            "What are we most likely to overlook?",
+            "What processes or relationships are especially fragile or undocumented?"
+        ]
+    },
+    {
+        title: "Action Items / Follow-Up",
+        minutes: 2,
+        bullets: [
+            "Confirm next steps and owners",
+            "Capture items requiring leadership follow-up"
+        ]
+    }
+];
+
+let currentSection = 0;
+let secondsLeft = agenda[0].minutes * 60;
+let timer = null;
+
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function currentTimestamp() {
+    return new Date().toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+}
+
+function insertSectionHeader(index) {
+
+    const notes = document.getElementById("notes");
+
+    const header = `
+--------------------------------------------------
+[${currentTimestamp()}] ${agenda[index].title}
+--------------------------------------------------
+
+`;
+
+    if (notes.value.trim() === "") {
+        notes.value = header;
+    } else {
+        notes.value += header;
+    }
+
+    notes.scrollTop = notes.scrollHeight;
+}
+
+function updateDisplay() {
+
+    document.getElementById("currentTitle").innerText =
+        agenda[currentSection].title;
+
+    const timerDisplay = document.getElementById("timerDisplay");
+
+    timerDisplay.innerText = formatTime(secondsLeft);
+
+    if (secondsLeft <= 30) {
+        timerDisplay.classList.add("warning");
+    } else {
+        timerDisplay.classList.remove("warning");
+    }
+
+    renderAgenda();
+}
+
+function renderAgenda() {
+
+    const agendaDiv = document.getElementById("agenda");
+
+    agendaDiv.innerHTML = "";
+
+    agenda.forEach((item, index) => {
+
+        const div = document.createElement("div");
+
+        div.className =
+            "section" + (index === currentSection ? " active" : "");
+
+        div.onclick = () => goToSection(index);
+
+        div.innerHTML = `
+            <h3>${item.title} (${item.minutes} min)</h3>
+            <ul>
+                ${item.bullets.map(b => `<li>${b}</li>`).join("")}
+            </ul>
+        `;
+
+        agendaDiv.appendChild(div);
+    });
+}
+
+function startTimer() {
+
+    if (timer) return;
+
+    if (document.getElementById("notes").value.trim() === "") {
+        insertSectionHeader(currentSection);
+    }
+
+    timer = setInterval(() => {
+
+        secondsLeft--;
+
+        if (secondsLeft <= 0) {
+            nextSection();
+        }
+
+        updateDisplay();
+
+    }, 1000);
+}
+
+function pauseTimer() {
+
+    clearInterval(timer);
+    timer = null;
+}
+
+function nextSection() {
+
+    pauseTimer();
+
+    if (currentSection < agenda.length - 1) {
+
+        currentSection++;
+        secondsLeft = agenda[currentSection].minutes * 60;
+
+        insertSectionHeader(currentSection);
+
+        startTimer();
+
+    } else {
+
+        alert("Meeting complete.");
+    }
+
+    updateDisplay();
+}
+
+function goToSection(index) {
+
+    pauseTimer();
+
+    currentSection = index;
+    secondsLeft = agenda[index].minutes * 60;
+
+    insertSectionHeader(index);
+
+    updateDisplay();
+}
+
+function resetMeeting() {
+
+    pauseTimer();
+
+    currentSection = 0;
+    secondsLeft = agenda[0].minutes * 60;
+
+    updateDisplay();
+}
+
+function showStatus(message) {
+
+    const status = document.getElementById("statusMessage");
+
+    status.innerText = message;
+
+    setTimeout(() => {
+        status.innerText = "";
+    }, 3000);
+}
+
+function copyText(text, message) {
+
+    navigator.clipboard.writeText(text).then(() => {
+        showStatus(message);
+    });
+}
+
+function copyNotes() {
+
+    const notes = document.getElementById("notes").value;
+
+    copyText(notes, "Meeting notes copied.");
+}
+
+function copyParkingLot() {
+
+    const parking = document.getElementById("parkingLot").value;
+
+    copyText(parking, "Parking lot copied.");
+}
+
+function copyFullSummary() {
+
+    const notes = document.getElementById("notes").value;
+
+    const parking = document.getElementById("parkingLot").value;
+
+    const now = new Date();
+
+    const summary = `
+# Transition Meeting Summary
+
+Date: ${now.toLocaleDateString()}
+Time: ${now.toLocaleTimeString()}
+
+## Meeting Notes
+${notes}
+
+## Parking Lot
+${parking}
+
+## Suggested Next Steps
+- Review action items
+- Transfer relevant tasks into Asana
+- Escalate unresolved leadership issues if necessary
+`;
+
+    copyText(summary, "Full meeting summary copied.");
+}
+
+updateDisplay();
+
+</script>
+
+</body>
+</html>
